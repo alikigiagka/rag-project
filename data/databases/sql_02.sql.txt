@@ -1,0 +1,190 @@
+-- q01 όλοι οι τίτλοι cd και τραγουδιών που αρχίζουν από S
+--     UNION και UNION ALL
+select ctitle from cd where ctitle like 'S%'
+union all
+select stitle from song where stitle like 'S%'
+order by ctitle;
+
+
+-- q02 τίτλοι cd που εμφανίζονται και ως τίτλοι τραγουδιού
+--     INTERSECT
+select ctitle from cd
+intersect
+select stitle from song;
+
+-- εναλλακτική υλοποίηση χωρίς intersect αλλά με σύζευξη
+select ctitle
+from cd, song
+where ctitle = stitle;
+
+
+-- q03 τίτλοι cd που ΔΕΝ εμφανίζονται και ως τίτλοι τραγουδιού
+--     DIFFERENCE (EXCEPT)
+--     ΠΡΟΣΟΧΗ: η Oracle χρησιμοποιεί το keyword minus
+select ctitle from cd
+except
+select stitle from song;
+
+
+-- ΠΡΟΣΟΧΗ: το παρακάτω ΔΕΝ ΕΙΝΑΙ εναλλακτική υλοποίηση του except 
+-- (δεν λύνεται με σύζευξη - γιατί;)
+select distinct cd.ctitle
+from song, cd
+where stitle <> ctitle;
+
+
+-- ΕΜΦΩΛΕΥΣΗ
+-- q04 λίστα ονομάτων εταιριών που έχουν κυκλοφορήσει cd
+
+-- Κλασική λύση με (φυσική) σύζευξη
+select distinct comid, name
+from cd join company using(comid)
+
+-- Λύση με εμφώλευση με χρήση IN
+select comid, name
+from company
+where comid in (select comid from cd)
+
+-- Λύση με εμφώλευση με χρήση EXISTS
+select comid, name
+from company
+where exists (select * from cd where comid=company.comid)
+
+
+-- q05 εμφωλευμένo αίτημα με IN 
+--     (εναλλακτικός τρόπος για την intersect του q2)
+select ctitle
+from cd
+where ctitle in (select stitle from song);
+
+
+-- q06 εμφωλευμένο αίτημα με EXISTS
+--     (εναλλακτικός τρόπος για την intersect του q2)
+select ctitle
+from cd
+where exists (select * from song where stitle=ctitle);
+
+
+-- q07 εμφωλευμένo αίτημα με ΝΟΤ ΙΝ 
+--     (εναλλακτικός τρόπος για την difference του q3)
+select ctitle
+from cd
+where ctitle not in (select stitle from song);
+
+-- δώστε την αντίστοιχη λύση με NOT EXISTS
+
+
+
+-- q08 τα cd που δεν είναι μοναδικά σε κάποια χρονιά
+--     εμφωλευμένo αίτημα με EXISTS 
+--     (προσθήκη c1.cid <> c2.cid για αποφυγή συσχέτισης cd με τον εαυτό του)
+select *
+from cd c1
+where exists (select * from cd c2
+              where c1.year = c2.year and c1.cid <> c2.cid);
+
+
+-- εμφώλευση με ALL και ANY
+-- q09 εύρεση max (min) χρονιάς με εμφώλευση
+select year
+from cd c1
+where not exists (select * from cd c2
+                  where c2.year > c1.year);
+
+-- δεν υπάρχει λύση με σύζευξη... γιατί;
+select distinct c1.year
+from cd c1 join cd c2 on c1.year > c2.year;
+
+-- επίσης, δεν υπάρχει λύση με in... γιατί;
+
+-- χρήση ALL για εύρεση max (min) year
+-- ΠΡΟΣΟΧΗ: πρέπει να προσθέσουμε τον απαραίτητο έλεγχο για τα null...
+select ctitle, year
+from cd
+where year >= all (select year from cd where year is not null);
+
+-- τί θα συμβεί αν χρησιμοποιήσουμε > all ;;;
+
+-- χρήση ANY για εύρεση max (min) year
+-- ΕΠΕΙΔΗ ΙΣΧΥΕΙ x >= all == !(x < any)
+select ctitle, year
+from cd c1
+where not year < any (select year from cd c2
+                       where c2.cid <> c1.cid and c2.year is not null);
+
+
+
+-- q10 υλοποίηση του q03 ή q07 (DIFFERENCE) με ANY ή ALL
+select ctitle
+from cd
+where not ctitle = any (select stitle from song);
+
+-- και επειδή !(x = any) == x <> all
+select ctitle
+from cd
+where ctitle <> all (select stitle from song);
+
+
+-- ΕΞΩΤΕΡΙΚΕΣ ΣΥΖΕΥΞΕΙΣ
+-- q11 η φυσική σύζευξη επιστρέφει μόνο τις ταιριαστές εγγραφές
+select ctitle, year, name
+from cd inner join company using(comid);
+
+
+-- q12 LEFT OUTER JOIN για να πάρουμε όλες τις εγγραφές των cd
+--     σχόλιο1: μπορούμε να παραλείψουμε το outer
+--     σχόλιο2: μπορούμε να χρησιμοποιήσουμε natural left join
+select ctitle, year, name
+from cd left outer join company using(comid);
+
+
+-- τρόπος υλοποίησης left join αν δεν υποστηρίζεται από το DBMS
+select ctitle, year, name
+from cd join company using(comid)
+union
+select ctitle, year, NULL
+from cd
+where comid not in (select comid from company);
+
+
+-- q13 RIGHT OUTER JOIN για να πάρουμε όλες τις εγγραφές των εταιριών
+select ctitle, year, name
+from cd right join company using(comid);
+
+
+-- τρόπος υλοποίησης right join αν δεν υποστηρίζεται από το DBMS
+select ctitle, year, name
+from company join cd using(comid)
+union
+select null, null, name
+from company
+where not comid in (select comid from cd);
+
+
+-- q14 FULL OUTER JOIN
+--     ΠΡΟΣΟΧΗ: δεν υποστηρίζεται από την MySQL/MariaDB
+select ctitle, year, name
+from cd full outer join company using(comid);
+
+
+-- τρόπος υλοποίησης full outer join αν δεν υποστηρίζεται από το DBMS
+select ctitle, year, name
+from cd left join company using(comid)
+union
+select ctitle, year, name
+from cd right join company using(comid);
+
+
+-- τρόπος υλοποίησης full outer join με union (χωρίς συζεύξεις)
+select ctitle, year, name
+from cd, company 
+where cd.comid = company.comid
+union
+select ctitle, year, NULL
+from cd
+where comid not in (select comid from company)
+union
+select null, null, name
+from company
+where not comid in (select comid from cd);
+

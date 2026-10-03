@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RAG Βοηθός Μαθημάτων</title>
+<style>
+  :root {
+    --paper: #f6f3ec;
+    --paper-edge: #e8e2d3;
+    --ink: #2b2620;
+    --ink-soft: #6b6354;
+    --db-accent: #8a5a44;     
+    --pd-accent: #3c5e63;     
+    --rule: #d8d0bd;
+    --error: #a13d2d;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+    min-height: 100vh;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent,
+      transparent 35px,
+      var(--paper-edge) 35px,
+      var(--paper-edge) 36px
+    );
+    opacity: 0.5;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .page {
+    position: relative;
+    z-index: 1;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+
+  header {
+    margin-bottom: 28px;
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 16px;
+  }
+
+  header .eyebrow {
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+
+  header h1 {
+    margin: 4px 0 0;
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .course-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+
+  .course-tab {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    padding: 8px 14px;
+    border: 1.5px solid var(--rule);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--ink-soft);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .course-tab:hover {
+    border-color: var(--ink);
+    color: var(--ink);
+  }
+
+  .course-tab.active[data-course="databases"] {
+    background: var(--db-accent);
+    border-color: var(--db-accent);
+    color: var(--paper);
+  }
+
+  .course-tab.active[data-course="parallel-distributed"] {
+    background: var(--pd-accent);
+    border-color: var(--pd-accent);
+    color: var(--paper);
+  }
+
+  .course-tab .dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    margin-right: 6px;
+    background: currentColor;
+    opacity: 0.6;
+  }
+
+  #chat {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    margin-bottom: 24px;
+  }
+
+  .msg {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 100%;
+  }
+
+  .msg.user {
+    align-items: flex-end;
+  }
+
+  .msg.assistant {
+    align-items: flex-start;
+  }
+
+  .bubble {
+    padding: 14px 16px;
+    border-radius: 4px;
+    line-height: 1.55;
+    font-size: 16px;
+    white-space: pre-wrap;
+  }
+
+  .msg.user .bubble {
+    background: var(--ink);
+    color: var(--paper);
+    border-top-right-radius: 0;
+    max-width: 80%;
+  }
+
+  .msg.assistant .bubble {
+    background: #fffdf8;
+    border: 1px solid var(--rule);
+    border-top-left-radius: 0;
+    max-width: 92%;
+  }
+
+  .msg.assistant .bubble.error {
+    border-color: var(--error);
+    color: var(--error);
+    background: #fbf1ee;
+  }
+
+  .sources {
+    font-family: 'Courier New', monospace;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    border-left: 2px solid var(--rule);
+    padding-left: 10px;
+    max-width: 92%;
+  }
+
+  .sources .label {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 10.5px;
+    margin-bottom: 3px;
+    display: block;
+  }
+
+  .source-item {
+    display: block;
+  }
+
+  .thinking {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    color: var(--ink-soft);
+    padding: 14px 16px;
+  }
+
+  .thinking::after {
+    content: "▍";
+    animation: blink 1s step-start infinite;
+  }
+
+  @keyframes blink { 50% { opacity: 0; } }
+
+  form#composer {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    gap: 10px;
+    background: var(--paper);
+    padding-top: 10px;
+  }
+
+  #query {
+    flex: 1;
+    font-family: inherit;
+    font-size: 16px;
+    padding: 12px 14px;
+    border: 1.5px solid var(--ink);
+    border-radius: 3px;
+    background: #fffdf8;
+    color: var(--ink);
+  }
+
+  #query:focus {
+    outline: 2px solid var(--ink-soft);
+    outline-offset: 1px;
+  }
+
+  button#send {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 0 20px;
+    border: 1.5px solid var(--ink);
+    border-radius: 3px;
+    background: var(--ink);
+    color: var(--paper);
+    cursor: pointer;
+  }
+
+  button#send:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  button#send:not(:disabled):hover {
+    background: var(--paper);
+    color: var(--ink);
+  }
+
+  .empty-state {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    color: var(--ink-soft);
+    text-align: center;
+    padding: 40px 0;
+    border: 1px dashed var(--rule);
+    border-radius: 4px;
+  }
+
+  @media (max-width: 600px) {
+    .page { padding: 24px 16px 70px; }
+    header h1 { font-size: 22px; }
+    .msg.user .bubble, .msg.assistant .bubble, .sources { max-width: 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div class="eyebrow">RAG Question Answering</div>
+    <h1>Βοηθός Σημειώσεων</h1>
+  </header>
+
+  <div class="course-tabs" id="courseTabs">
+    
+  </div>
+
+  <div id="chat">
+    <div class="empty-state" id="emptyState">Επίλεξε μάθημα και κάνε μια ερώτηση για να ξεκινήσεις.</div>
+  </div>
+
+  <form id="composer" autocomplete="off">
+    <input type="text" id="query" placeholder="Ρώτησε κάτι για το μάθημα…" />
+    <button type="submit" id="send">Αποστολή</button>
+  </form>
+
+</div>
+
+<script>
+  const chatEl = document.getElementById('chat');
+  const emptyState = document.getElementById('emptyState');
+  const tabsEl = document.getElementById('courseTabs');
+  const form = document.getElementById('composer');
+  const input = document.getElementById('query');
+  const sendBtn = document.getElementById('send');
+
+  let currentCourse = null;
+  let courses = [];
+
+  async function loadCourses() {
+    try {
+      const res = await fetch('/api/courses');
+      courses = await res.json();
+      tabsEl.innerHTML = '';
+      courses.forEach((c, idx) => {
+        const btn = document.createElement('button');
+        btn.className = 'course-tab' + (idx === 0 ? ' active' : '');
+        btn.dataset.course = c.key;
+        btn.innerHTML = `<span class="dot"></span>${c.name}`;
+        btn.addEventListener('click', () => selectCourse(c.key));
+        tabsEl.appendChild(btn);
+      });
+      if (courses.length) selectCourse(courses[0].key,  true);
+    } catch (err) {
+      tabsEl.innerHTML = '<span style="color:var(--error); font-family:monospace; font-size:13px;">Δεν ήταν δυνατή η φόρτωση μαθημάτων. Είναι ο server ενεργός;</span>';
+    }
+  }
+
+  function selectCourse(key, silent) {
+    currentCourse = key;
+    document.querySelectorAll('.course-tab').forEach(el => {
+      el.classList.toggle('active', el.dataset.course === key);
+    });
+    if (!silent) {
+      input.focus();
+    }
+  }
+
+  function addMessage(role, text) {
+    emptyState.style.display = 'none';
+    const wrap = document.createElement('div');
+    wrap.className = `msg ${role}`;
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = text;
+    wrap.appendChild(bubble);
+    chatEl.appendChild(wrap);
+    window.scrollTo(0, document.body.scrollHeight);
+    return wrap;
+  }
+
+  function addSources(sources) {
+    if (!sources || !sources.length) return;
+    const box = document.createElement('div');
+    box.className = 'sources';
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.textContent = 'Πηγές';
+    box.appendChild(label);
+    sources.forEach(s => {
+      const line = document.createElement('span');
+      line.className = 'source-item';
+      line.textContent = s.pages && s.pages.length
+        ? `${s.name} — σελ. ${s.pages.join(', ')}`
+        : s.name;
+      box.appendChild(line);
+    });
+    chatEl.appendChild(box);
+    window.scrollTo(0, document.body.scrollHeight);
+  }
+
+  function addThinking() {
+    const wrap = document.createElement('div');
+    wrap.className = 'msg assistant';
+    const bubble = document.createElement('div');
+    bubble.className = 'thinking';
+    bubble.textContent = 'Αναζήτηση στις σημειώσεις';
+    wrap.appendChild(bubble);
+    chatEl.appendChild(wrap);
+    window.scrollTo(0, document.body.scrollHeight);
+    return wrap;
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const query = input.value.trim();
+    if (!query || !currentCourse) return;
+
+    addMessage('user', query);
+    input.value = '';
+    sendBtn.disabled = true;
+    const thinkingEl = addThinking();
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ course_key: currentCourse, query }),
+      });
+
+      const data = await res.json();
+      thinkingEl.remove();
+
+      if (!res.ok) {
+        const errBubble = addMessage('assistant', data.detail || 'Παρουσιάστηκε σφάλμα.');
+        errBubble.querySelector('.bubble').classList.add('error');
+        return;
+      }
+
+      addMessage('assistant', data.answer);
+      addSources(data.sources);
+
+    } catch (err) {
+      thinkingEl.remove();
+      const errBubble = addMessage('assistant', 'Δεν ήταν δυνατή η επικοινωνία με τον server. Βεβαιωθείτε ότι τρέχει το api.py.');
+      errBubble.querySelector('.bubble').classList.add('error');
+    } finally {
+      sendBtn.disabled = false;
+      input.focus();
+    }
+  });
+
+  loadCourses();
+</script>
+</body>
+</html>
