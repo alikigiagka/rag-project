@@ -211,6 +211,17 @@
     padding-top: 10px;
   }
 
+  #questionType {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    padding: 8px 10px;
+    border: 1.5px solid var(--ink);
+    border-radius: 3px;
+    background: #fffdf8;
+    color: var(--ink);
+    cursor: pointer;
+  }
+
   #query {
     flex: 1;
     font-family: inherit;
@@ -264,6 +275,8 @@
     .page { padding: 24px 16px 70px; }
     header h1 { font-size: 22px; }
     .msg.user .bubble, .msg.assistant .bubble, .sources { max-width: 100%; }
+    form#composer { flex-wrap: wrap; }
+    #questionType { width: 100%; }
   }
 </style>
 </head>
@@ -284,6 +297,13 @@
   </div>
 
   <form id="composer" autocomplete="off">
+    <select id="questionType" title="Τύπος ερώτησης">
+      <option value="Factual Recall">Factual Recall (Προεπιλογή)</option>
+      <option value="Conceptual Understanding">Conceptual Understanding</option>
+      <option value="Multi-hop Reasoning">Multi-hop Reasoning</option>
+      <option value="Unanswerable">Unanswerable</option>
+      <option value="Image-based">Image-based</option>
+    </select>
     <input type="text" id="query" placeholder="Ρώτησε κάτι για το μάθημα…" />
     <button type="submit" id="send">Αποστολή</button>
   </form>
@@ -296,6 +316,7 @@
   const tabsEl = document.getElementById('courseTabs');
   const form = document.getElementById('composer');
   const input = document.getElementById('query');
+  const questionTypeSelect = document.getElementById('questionType');
   const sendBtn = document.getElementById('send');
 
   let currentCourse = null;
@@ -389,7 +410,11 @@
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ course_key: currentCourse, query }),
+        body: JSON.stringify({
+          course_key: currentCourse,
+          query,
+          question_type: questionTypeSelect.value || 'Factual Recall'
+        }),
       });
 
       const data = await res.json();

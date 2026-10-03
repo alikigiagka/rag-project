@@ -99,6 +99,20 @@ def chat(course_key: str = "databases", session_queries: list[dict] | None = Non
                 print(f"Άγνωστο μάθημα: {selected}")
             continue
 
+        qtype_map = {
+            "1": "Factual Recall",
+            "2": "Conceptual Understanding",
+            "3": "Multi-hop Reasoning",
+            "4": "Unanswerable",
+            "5": "Image-based"
+        }
+        try:
+            qtype_input = input("Είδος ερώτησης (1:Factual Recall, 2:Conceptual, 3:Multi-hop, 4:Unanswerable, 5:Image) [Enter=Factual Recall]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return "exit_abrupt"
+
+        question_type = qtype_map.get(qtype_input, qtype_input if qtype_input in qtype_map.values() else "Factual Recall")
+
         # Execute hybrid retrieval
         context_texts, sources_with_pages = retriever.retrieve(query)
 
@@ -130,6 +144,7 @@ def chat(course_key: str = "databases", session_queries: list[dict] | None = Non
             if session_queries is not None:
                 session_queries.append({
                     "query": query,
+                    "question_type": question_type,
                     "retrieved_context": "\n\n".join(context_texts),
                     "generated_answer": response_text
                 })

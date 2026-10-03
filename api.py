@@ -51,11 +51,14 @@ def get_retriever(course_key: str) -> Retriever:
             )
     return _retrievers[course_key]
 
+from main import save_queries_to_json
+
 # --- Pydantic API Data Schemas ---
 
 class ChatRequest(BaseModel):
     course_key: str
     query: str
+    question_type: str = "Factual Recall"
 
 class SourceItem(BaseModel):
     name: str
@@ -106,6 +109,14 @@ def chat(req: ChatRequest):
             status_code=502,
             detail=f"Σφάλμα κατά την επικοινωνία με το Gemini API: {error}",
         )
+
+    question_type = req.question_type.strip() if req.question_type and req.question_type.strip() else "Factual Recall"
+    save_queries_to_json([{
+        "query": query,
+        "question_type": question_type,
+        "retrieved_context": "\n\n".join(context_texts),
+        "generated_answer": answer
+    }])
 
     sources = [
         SourceItem(name=name, pages=sorted(pages))
