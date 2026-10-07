@@ -1,6 +1,7 @@
-"""
-FastAPI Web Service for Multi-Course RAG Application.
-Exposes RESTful endpoints for listing courses, handling chat queries, and serving the frontend UI.
+"""FastAPI Web Service for Multi-Course RAG Application.
+
+Exposes RESTful API endpoints for listing available courses, processing natural language Q&A queries
+with hybrid retrieval, and serving the static single-page web UI.
 
 Execution:
     uvicorn api:app --reload
@@ -13,13 +14,17 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.config import COURSES
 from src.retriever import Retriever
 from src.llm import generate_response
+from main import save_queries_to_json
 
-app = FastAPI(title="Multi-Course RAG QA API", description="RESTful API for multi-course document QA using Hybrid RAG")
+app = FastAPI(
+    title="Multi-Course RAG QA API",
+    description="RESTful API for multi-course document QA using Hybrid RAG"
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,18 +33,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global in-memory cache for course retriever instances
+# In-memory dictionary cache preventing expensive repeated initialization of embedding models and vector stores
 _retrievers: dict[str, Retriever] = {}
 
+
 def get_retriever(course_key: str) -> Retriever:
-    """
-    Lazy loader for course-specific Retriever objects.
-    Initializes and caches the hybrid retriever (ChromaDB + BM25) for a given course key.
+    """Lazy loader and in-memory cache manager for course-specific Retriever instances.
+
+    Initializes and caches the hybrid retriever instance for a given course key on first request,
+    reusing the instance for subsequent API queries to avoid redundant model loading overhead.
+
+    Args:
+        course_key (str): Key identifier of the target course.
+
+    Returns:
+        Retriever: Cached hybrid retriever instance.
+
+    Raises:
+        HTTPException: 404 error if course_key is invalid, or 500 error if retriever instantiation fails.
     """
     if course_key not in COURSES:
         raise HTTPException(
             status_code=404,
-            detail=f"Άγνωστο μάθημα '{course_key}'. Διαθέσιμα: {list(COURSES.keys())}",
+            detail=f"Unknown course '{course_key}'. Available: {list(COURSES.keys())}",
         )
     if course_key not in _retrievers:
         try:
@@ -47,49 +63,69 @@ def get_retriever(course_key: str) -> Retriever:
         except Exception as e:
             raise HTTPException(
                 status_code=500,
-                detail=f"Σφάλμα φόρτωσης retriever για '{course_key}': {e}",
+                detail=f"Retriever loading error for '{course_key}': {e}",
             )
     return _retrievers[course_key]
 
-from main import save_queries_to_json
 
-# --- Pydantic API Data Schemas ---
+# Pydantic API Data Schemas
 
 class ChatRequest(BaseModel):
-    course_key: str
-    query: str
-    question_type: str = "Factual Recall"
+    """API request payload schema for chat queries."""
+    course_key: str = Field(..., description="Unique string identifier of the selected course")
+    query: str = Field(..., description="User question string")
+    question_type: str = Field(default="Factual Recall", description="Evaluation taxonomy category")
+
 
 class SourceItem(BaseModel):
-    name: str
-    pages: list[int] = []
+    """Schema for individual document citation metadata."""
+    name: str = Field(..., description="Filename of the cited source document")
+    pages: list[int] = Field(default_factory=list, description="List of 1-based page numbers cited")
+
 
 class ChatResponse(BaseModel):
-    answer: str
-    sources: list[SourceItem]
+    """API response payload schema for chat queries."""
+    answer: str = Field(..., description="Generated natural language response string")
+    sources: list[SourceItem] = Field(..., description="List of cited document sources and page numbers")
+
 
 class CourseItem(BaseModel):
-    key: str
-    name: str
+    """Schema for available course metadata."""
+    key: str = Field(..., description="Course key identifier")
+    name: str = Field(..., description="Human-readable course title in Greek")
 
-# --- API Endpoints ---
+
+# API Endpoints
 
 @app.get("/api/courses", response_model=list[CourseItem], summary="Get list of available courses")
-def list_courses():
-    """Returns all available courses configured in the RAG system."""
-    return [{"key": k, "name": v["name"]} for k, v in COURSES.items()]
+def list_courses() -> list[CourseItem]:
+    """Retrieves all available educational courses configured in the system.
+
+    Returns:
+        list[CourseItem]: List of course objects containing key identifiers and display names.
+    """
+    return [CourseItem(key=k, name=v["name"]) for k, v in COURSES.items()]
+
 
 @app.post("/api/chat", response_model=ChatResponse, summary="Query the RAG system for an answer")
-def chat(req: ChatRequest):
-    """
-    Handles RAG QA queries:
-    1. Retrieves relevant text chunks using hybrid search for the requested course.
-    2. Sends context and query to Gemini LLM for answer generation.
-    3. Returns the answer along with cited sources and page numbers.
+def chat(req: ChatRequest) -> ChatResponse:
+    """Processes a user question using hybrid retrieval and LLM generation.
+
+    Retrieves context chunks from ChromaDB and BM25, prompts Gemini for a grounded answer,
+    appends QA metrics to the evaluation dataset, and formats cited source page numbers.
+
+    Args:
+        req (ChatRequest): Incoming chat request payload containing query, course key, and question type taxonomy.
+
+    Returns:
+        ChatResponse: Structured response containing answer text and cited source documents with page numbers.
+
+    Raises:
+        HTTPException: 400 if query is empty, 404/500 if course retriever fails, 502 if LLM call fails.
     """
     query = req.query.strip()
     if not query:
-        raise HTTPException(status_code=400, detail="Η ερώτηση είναι κενή.")
+        raise HTTPException(status_code=400, detail="The question query cannot be empty.")
 
     retriever = get_retriever(req.course_key)
     course_name = COURSES[req.course_key]["name"]
@@ -107,9 +143,10 @@ def chat(req: ChatRequest):
     if error:
         raise HTTPException(
             status_code=502,
-            detail=f"Σφάλμα κατά την επικοινωνία με το Gemini API: {error}",
+            detail=f"Gemini API communication error: {error}",
         )
 
+    # Fall back to default Factual Recall classification if whitespace or null input is passed
     question_type = req.question_type.strip() if req.question_type and req.question_type.strip() else "Factual Recall"
     save_queries_to_json([{
         "query": query,
@@ -125,10 +162,17 @@ def chat(req: ChatRequest):
 
     return ChatResponse(answer=answer, sources=sources)
 
+
 @app.get("/", summary="Serve main Web Interface")
-def serve_index():
-    """Serves the static web application index page."""
+def serve_index() -> FileResponse:
+    """Serves the main single-page web application frontend.
+
+    Returns:
+        FileResponse: Static HTML response for index.html.
+    """
     return FileResponse("static/index.html")
 
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
 

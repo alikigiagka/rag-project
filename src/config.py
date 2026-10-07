@@ -1,6 +1,7 @@
-"""
-Central Configuration Module for Multi-Course RAG System.
-Defines course paths, vector DB settings, model names, and retrieval hyperparameters.
+"""Central Configuration Module for Multi-Course RAG System.
+
+Defines course metadata, persistent database storage locations, model designations,
+and retrieval hyperparameters for dense vector search and sparse BM25 indexing.
 """
 
 import os
@@ -22,29 +23,34 @@ COURSES = {
     }
 }
 
-# Base directories
+# Base directory paths
 DATA_BASE_DIR = "data"
 CHROMA_PATH = "chroma_db"
 
-# Embedding and Generative AI Model Configurations
+# Multilingual embedding model tailored for dense semantic retrieval across English and Greek
 EMBEDDING_MODEL_NAME = 'intfloat/multilingual-e5-large-instruct'
 GEMINI_MODEL_NAME = 'gemini-2.5-flash'
 GEMINI_VISION_MODEL_NAME = 'gemini-2.5-flash'
 PROCESS_IMAGES = True
 
-# Load environment variables
 load_dotenv()
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 
-# Retrieval & Hybrid Search Hyperparameters
-RRF_K = 60           # Constant k for Reciprocal Rank Fusion formula: 1 / (rank + k)
-TOP_K_DENSE = 8      # Number of candidates retrieved from ChromaDB (dense search)
-TOP_K_SPARSE = 8     # Number of candidates retrieved from BM25 (sparse search)
-FINAL_TOP_K = 5      # Final number of top chunks passed to the LLM context
-MIN_CHUNK_WORDS = 15 # Minimum word count threshold for valid chunks
+# Standard Reciprocal Rank Fusion constant k=60 to dampen impact of high ranks across retrieval algorithms
+RRF_K = 60
 
-# Ensure target directories exist
+# Candidate pool sizes over-fetched from individual retrievers prior to fusion
+TOP_K_DENSE = 8
+TOP_K_SPARSE = 8
+
+# Maximum context items retained post-fusion to fit within LLM context window without diluting attention
+FINAL_TOP_K = 5
+
+# Minimum token count threshold to discard isolated slide titles, page numbers, and structural noise
+MIN_CHUNK_WORDS = 15
+
 os.makedirs(DATA_BASE_DIR, exist_ok=True)
 for course_key, course_info in COURSES.items():
     os.makedirs(course_info["path"], exist_ok=True)
+
 

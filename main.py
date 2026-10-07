@@ -1,6 +1,7 @@
-"""
-CLI Interface for Multi-Course RAG System.
-Provides command-line arguments to trigger ingestion or start an interactive Q&A session with evaluation logging.
+"""CLI Interface for Multi-Course RAG System.
+
+Provides command-line arguments to trigger document ingestion or start an interactive terminal Q&A
+session with evaluation logging.
 """
 
 import argparse
@@ -15,16 +16,22 @@ from src.ingest import run_ingestion
 from src.retriever import Retriever
 from src.llm import generate_response
 
-def show_available_courses():
-    """Prints the list of supported courses configured in the system."""
+
+def show_available_courses() -> None:
+    """Prints the list of supported courses configured in the system to stdout."""
     print("\nΔιαθέσιμα μαθήματα:")
     for key, info in COURSES.items():
         print(f"  {key}: {info['name']}")
 
-def save_queries_to_json(queries: list[dict], filename: str = "rag_evaluation_data.json"):
-    """
-    Appends interactive QA session data (queries, taxonomy, retrieved contexts, and answers)
-    to a JSON dataset for RAG evaluation.
+
+def save_queries_to_json(queries: list[dict], filename: str = "rag_evaluation_data.json") -> None:
+    """Appends QA interaction data to a JSON dataset for RAG evaluation.
+
+    Args:
+        queries (list[dict]): List of dictionary records containing query, taxonomy,
+            retrieved context, and generated answer text.
+        filename (str, optional): Target JSON file name located in the project directory.
+            Defaults to "rag_evaluation_data.json".
     """
     if not queries:
         return
@@ -51,10 +58,21 @@ def save_queries_to_json(queries: list[dict], filename: str = "rag_evaluation_da
     except Exception as e:
         print(f"\nΣφάλμα κατά την αποθήκευση στο αρχείο {filename}: {e}")
 
-def chat(course_key: str = "databases", session_queries: list[dict] | None = None):
-    """
-    Runs the interactive CLI chat loop for a selected course.
-    Handles user queries, hybrid document retrieval, Gemini response generation, and evaluation logging.
+
+def chat(course_key: str = "databases", session_queries: list[dict] | None = None) -> str | None:
+    """Executes the interactive command-line interface chat session.
+
+    Handles user query input, query taxonomy classification, document retrieval,
+    LLM response generation, and evaluation data collection.
+
+    Args:
+        course_key (str, optional): Key identifier of the active course. Defaults to "databases".
+        session_queries (list[dict] | None, optional): Session query accumulator list,
+            or None to disable in-memory query accumulation. Defaults to None.
+
+    Returns:
+        str | None: Next selected course key to switch course, 'exit_graceful' or 'exit_abrupt'
+            on exit, or None if retriever initialization failed.
     """
     course_info = COURSES.get(course_key)
     if not course_info:
@@ -99,6 +117,7 @@ def chat(course_key: str = "databases", session_queries: list[dict] | None = Non
                 print(f"Άγνωστο μάθημα: {selected}")
             continue
 
+        # Question categories used to label entries in the evaluation dataset
         qtype_map = {
             "1": "Factual Recall",
             "2": "Conceptual Understanding",
@@ -113,14 +132,12 @@ def chat(course_key: str = "databases", session_queries: list[dict] | None = Non
 
         question_type = qtype_map.get(qtype_input, qtype_input if qtype_input in qtype_map.values() else "Factual Recall")
 
-        # Execute hybrid retrieval
         context_texts, sources_with_pages = retriever.retrieve(query)
 
         if not context_texts:
             print("Δεν βρέθηκαν αρκετά σχετικά έγγραφα για να απαντηθεί η ερώτηση.")
             continue
 
-        # Generate response using LLM
         response_text, error = generate_response(query, context_texts, course_info['name'])
 
         if error:
@@ -130,7 +147,6 @@ def chat(course_key: str = "databases", session_queries: list[dict] | None = Non
             print("\n--- Απάντηση ---")
             print(response_text)
 
-            # Display source files and specific page citations
             sources_display = []
             for source_name, pages in sorted(sources_with_pages.items()):
                 if pages:
@@ -148,6 +164,7 @@ def chat(course_key: str = "databases", session_queries: list[dict] | None = Non
                     "retrieved_context": "\n\n".join(context_texts),
                     "generated_answer": response_text
                 })
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Multi-Course Local RAG Project CLI")
@@ -175,4 +192,5 @@ if __name__ == "__main__":
 
         if graceful_exit:
             save_queries_to_json(session_queries)
+
 

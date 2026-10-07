@@ -42,4 +42,4 @@ chroma_db/
 vision_cache.json
 data/vision_cache.json
 
-
+.agents/
